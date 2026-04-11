@@ -76,7 +76,7 @@ internal sealed class PostHogApiClient : IDisposable
         return await _httpClient.PostJsonWithRetryAsync(
                    endpointUrl,
                    payload,
-                   PostHogJsonContext.Default.DictionaryStringObject,
+                   JsonSerializerHelper.GetTypeInfo<Dictionary<string, object>>(),
                    PostHogJsonContext.Default.ApiResult,
                    _timeProvider,
                    _options.Value,
@@ -99,7 +99,7 @@ internal sealed class PostHogApiClient : IDisposable
         return await _httpClient.PostJsonAsync(
                    endpointUrl,
                    payload,
-                   PostHogJsonContext.Default.DictionaryStringObject,
+                   JsonSerializerHelper.GetTypeInfo<Dictionary<string, object>>(),
                    PostHogJsonContext.Default.ApiResult,
                    cancellationToken)
                ?? new ApiResult(0);
@@ -145,7 +145,7 @@ internal sealed class PostHogApiClient : IDisposable
         return await _httpClient.PostJsonAsync(
             endpointUrl,
             payload,
-            PostHogJsonContext.Default.DictionaryStringObject,
+            JsonSerializerHelper.GetTypeInfo<Dictionary<string, object>>(),
             PostHogJsonContext.Default.FlagsApiResult,
             cancellationToken);
     }

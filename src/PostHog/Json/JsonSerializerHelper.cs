@@ -20,6 +20,15 @@ internal static class JsonSerializerHelper
         }
     };
 
+    /// <summary>
+    /// Returns a <see cref="JsonTypeInfo{T}"/> resolved through <see cref="Options"/>, which includes
+    /// custom converters (e.g. <see cref="PolymorphicObjectJsonConverter"/>). Use this instead of
+    /// <c>PostHogJsonContext.Default.XYZ</c> for any type that contains polymorphic <c>object</c> values
+    /// — the source-generated context's own options do not include the custom converters.
+    /// </summary>
+    internal static JsonTypeInfo<T> GetTypeInfo<T>() =>
+        (JsonTypeInfo<T>)Options.GetTypeInfo(typeof(T));
+
     static readonly JsonSerializerOptions IndentedOptions = new(Options)
     {
         WriteIndented = true

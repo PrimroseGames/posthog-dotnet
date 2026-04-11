@@ -74,6 +74,6 @@ internal static class FeatureFlagCacheKey
             .OrderBy(kvp => kvp.Key)
             .ToArray();
 
-        return JsonSerializer.Serialize(sortedPairs, PostHogJsonContext.Default.KeyValuePairStringObjectArray);
+        return JsonSerializer.Serialize(sortedPairs, JsonSerializerHelper.GetTypeInfo<KeyValuePair<string, object?>[]>());
     }
 }
