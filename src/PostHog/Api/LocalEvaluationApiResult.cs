@@ -130,8 +130,9 @@ internal record FeatureFlagFilters
     /// You may be tempted to change this type to <c>IReadonlyDictionary&lt;string, JsonDocument&gt;</c>, but that is
     /// incorrect. The payload value is a string <em>containing</em> JSON, not JSON itself. So it needs to be
     /// deserialized as a string, and then parsed as JSON. Ask me how I know.
+    /// The <see cref="ReadOnlyDictionaryJsonConverterFactory"/> registered on
+    /// <see cref="JsonSerializerHelper.Options"/> handles the conversion.
     /// </remarks>
-    [JsonConverter(typeof(ReadonlyDictionaryJsonConverter<string, string>))]
     public IReadOnlyDictionary<string, string>? Payloads { get; init; }
 
     /// <summary>
@@ -411,7 +412,7 @@ internal record PropertyFilter : Filter
 /// <summary>
 /// The types of comparison operators for a filter.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumMemberNameJsonConverter<FilterType>))]
+[JsonConverter(typeof(JsonStringEnumConverter<FilterType>))]
 public enum FilterType
 {
     /// <summary>

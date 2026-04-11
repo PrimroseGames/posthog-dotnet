@@ -31,12 +31,8 @@ public static class PostHogConfigurationBuilderExtensions
     public static IPostHogConfigurationBuilder UseConfigurationSection(
         this IPostHogConfigurationBuilder builder,
         IConfigurationSection section) =>
+#pragma warning disable IL2026, IL3050 // Configuration binding
         NotNull(builder).Use(services
             => services.Configure<PostHogOptions>(section));
-
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-    static IServiceCollection Configure<T>(this IServiceCollection services, IConfigurationSection section)
-        where T : class =>
-        services.Configure<T>(section.Bind);
-#endif
+#pragma warning restore IL2026, IL3050
 }

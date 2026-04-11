@@ -1,13 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-using PostHog.Library.Polyfills;
-using Convert = PostHog.Library.Polyfills.Convert;
-#else
 using Convert = System.Convert;
 using System.Security.Cryptography;
-#endif
 
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -756,12 +751,7 @@ internal sealed class LocalEvaluator
     {
         var keyBytes = Encoding.UTF8.GetBytes(key);
 #pragma warning disable CA5350 // This SHA is not used for security purposes
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-        using var sha1 = new System.Security.Cryptography.SHA1Managed();
-        return sha1.ComputeHash(keyBytes);
-#else
         return SHA1.HashData(keyBytes);
-#endif
 #pragma warning restore
     }
 

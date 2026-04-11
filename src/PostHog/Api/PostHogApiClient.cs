@@ -2,13 +2,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PostHog.Json;
 using PostHog.Library;
 using PostHog.Versioning;
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-#endif
 
 namespace PostHog.Api;
 
@@ -74,9 +73,11 @@ internal sealed class PostHogApiClient : IDisposable
             ["batch"] = events.ToReadOnlyList()
         };
 
-        return await _httpClient.PostJsonWithRetryAsync<ApiResult>(
+        return await _httpClient.PostJsonWithRetryAsync(
                    endpointUrl,
                    payload,
+                   PostHogJsonContext.Default.DictionaryStringObject,
+                   PostHogJsonContext.Default.ApiResult,
                    _timeProvider,
                    _options.Value,
                    cancellationToken)
@@ -95,7 +96,12 @@ internal sealed class PostHogApiClient : IDisposable
 
         var endpointUrl = new Uri(HostUrl, "capture");
 
-        return await _httpClient.PostJsonAsync<ApiResult>(endpointUrl, payload, cancellationToken)
+        return await _httpClient.PostJsonAsync(
+                   endpointUrl,
+                   payload,
+                   PostHogJsonContext.Default.DictionaryStringObject,
+                   PostHogJsonContext.Default.ApiResult,
+                   cancellationToken)
                ?? new ApiResult(0);
     }
 
@@ -136,9 +142,11 @@ internal sealed class PostHogApiClient : IDisposable
 
         PrepareAndMutatePayload(payload);
 
-        return await _httpClient.PostJsonAsync<FlagsApiResult>(
+        return await _httpClient.PostJsonAsync(
             endpointUrl,
             payload,
+            PostHogJsonContext.Default.DictionaryStringObject,
+            PostHogJsonContext.Default.FlagsApiResult,
             cancellationToken);
     }
 
@@ -161,9 +169,10 @@ internal sealed class PostHogApiClient : IDisposable
         };
         try
         {
-            return await GetAuthenticatedResponseWithETagAsync<LocalEvaluationApiResult>(
+            return await GetAuthenticatedResponseWithETagAsync(
                 uriBuilder.Uri.PathAndQuery,
                 etag,
+                PostHogJsonContext.Default.LocalEvaluationApiResult,
                 cancellationToken);
         }
         catch (ApiException e) when (e.ErrorType is "quota_limited")
@@ -191,12 +200,16 @@ internal sealed class PostHogApiClient : IDisposable
             Query = $"token={Uri.EscapeDataString(ProjectApiKey)}"
         };
 
-        return await GetAuthenticatedResponseAsync<JsonDocument>(
+        return await GetAuthenticatedResponseAsync(
             uriBuilder.Uri.PathAndQuery,
+            PostHogJsonContext.Default.JsonDocument,
             cancellationToken);
     }
 
-    async Task<T?> GetAuthenticatedResponseAsync<T>(string relativeUrl, CancellationToken cancellationToken)
+    async Task<T?> GetAuthenticatedResponseAsync<T>(
+        string relativeUrl,
+        JsonTypeInfo<T> responseTypeInfo,
+        CancellationToken cancellationToken)
     {
         var options = _options.Value ?? throw new InvalidOperationException(nameof(_options));
         var personalApiKey = options.PersonalApiKey
@@ -212,16 +225,14 @@ internal sealed class PostHogApiClient : IDisposable
 
         await response.EnsureSuccessfulApiCall(cancellationToken);
 
-        return await response.Content.ReadFromJsonAsync<T>(
-            JsonSerializerHelper.Options,
-            cancellationToken);
+        return await response.Content.ReadFromJsonAsync(responseTypeInfo, cancellationToken);
     }
 
-    async Task<LocalEvaluationResponse> GetAuthenticatedResponseWithETagAsync<T>(
+    async Task<LocalEvaluationResponse> GetAuthenticatedResponseWithETagAsync(
         string relativeUrl,
         string? etag,
+        JsonTypeInfo<LocalEvaluationApiResult> responseTypeInfo,
         CancellationToken cancellationToken)
-        where T : LocalEvaluationApiResult
     {
         var options = _options.Value ?? throw new InvalidOperationException(nameof(_options));
         var personalApiKey = options.PersonalApiKey
@@ -254,9 +265,7 @@ internal sealed class PostHogApiClient : IDisposable
 
         await response.EnsureSuccessfulApiCall(cancellationToken);
 
-        var result = await response.Content.ReadFromJsonAsync<T>(
-            JsonSerializerHelper.Options,
-            cancellationToken);
+        var result = await response.Content.ReadFromJsonAsync(responseTypeInfo, cancellationToken);
 
         return LocalEvaluationResponse.Success(result, responseETag);
     }

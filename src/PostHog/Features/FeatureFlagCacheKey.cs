@@ -74,7 +74,6 @@ internal static class FeatureFlagCacheKey
             .OrderBy(kvp => kvp.Key)
             .ToArray();
 
-        // Use JSON serialization for complex values
-        return JsonSerializer.Serialize(sortedPairs, JsonSerializerHelper.Options);
+        return JsonSerializer.Serialize(sortedPairs, PostHogJsonContext.Default.KeyValuePairStringObjectArray);
     }
 }

@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -141,7 +140,9 @@ internal interface IStringOrObject
 }
 
 /// <summary>
-/// Json converter for <see cref="StringOrValue{T}"/>.
+/// Json converter for <see cref="StringOrValue{T}"/>. Only <see cref="bool"/> and <see cref="int"/> are
+/// supported. Reads and writes go through <see cref="Utf8JsonReader"/>/<see cref="Utf8JsonWriter"/>
+/// directly to stay NativeAOT-safe (no generic <c>JsonSerializer</c> round-trip).
 /// </summary>
 internal class StringOrValueConverter : JsonConverter<IStringOrObject>
 {
@@ -153,53 +154,50 @@ internal class StringOrValueConverter : JsonConverter<IStringOrObject>
     {
         var targetType = typeToConvert.GetGenericArguments()[0];
 
-        if (reader.TokenType == JsonTokenType.String)
+        if (targetType == typeof(bool))
         {
-            var stringValue = reader.GetString();
-            return stringValue is null
-                ? CreateEmptyInstance(targetType)
-                : CreateStringInstance(targetType, stringValue);
+            return ReadBool(ref reader);
         }
 
-        var value = JsonSerializer.Deserialize(ref reader, targetType, options);
+        if (targetType == typeof(int))
+        {
+            return ReadInt(ref reader);
+        }
 
-        return value is null
-            ? CreateEmptyInstance(targetType)
-            : CreateValueInstance(targetType, value);
+        throw new NotSupportedException(
+            $"StringOrValue<{targetType.Name}> is not supported.");
     }
 
-    static ConstructorInfo GetEmptyConstructor(Type targetType)
+    static StringOrValue<bool> ReadBool(ref Utf8JsonReader reader)
     {
-        return typeof(StringOrValue<>)
-                   .MakeGenericType(targetType).
-                   GetConstructor([])
-               ?? throw new InvalidOperationException($"No constructor found for StringOrValue<{targetType.Name}>.");
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var s = reader.GetString();
+            return s is null ? default : new StringOrValue<bool>(s);
+        }
+
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return default;
+        }
+
+        return new StringOrValue<bool>(reader.GetBoolean());
     }
 
-    static ConstructorInfo GetConstructor(Type targetType, Type argumentType)
+    static StringOrValue<int> ReadInt(ref Utf8JsonReader reader)
     {
-        return typeof(StringOrValue<>)
-            .MakeGenericType(targetType).
-            GetConstructor([argumentType])
-            ?? throw new InvalidOperationException($"No constructor found for StringOrValue<{targetType.Name}>.");
-    }
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var s = reader.GetString();
+            return s is null ? default : new StringOrValue<int>(s);
+        }
 
-    static IStringOrObject CreateEmptyInstance(Type targetType)
-    {
-        var ctor = GetEmptyConstructor(targetType);
-        return (IStringOrObject)ctor.Invoke([]);
-    }
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return default;
+        }
 
-    static IStringOrObject CreateStringInstance(Type targetType, string value)
-    {
-        var ctor = GetConstructor(targetType, typeof(string));
-        return (IStringOrObject)ctor.Invoke([value]);
-    }
-
-    static IStringOrObject CreateValueInstance(Type targetType, object value)
-    {
-        var ctor = GetConstructor(targetType, targetType);
-        return (IStringOrObject)ctor.Invoke([value]);
+        return new StringOrValue<int>(reader.GetInt32());
     }
 
     public override void Write(Utf8JsonWriter writer, IStringOrObject value, JsonSerializerOptions options)
@@ -207,14 +205,26 @@ internal class StringOrValueConverter : JsonConverter<IStringOrObject>
         if (value.IsString)
         {
             writer.WriteStringValue(value.StringValue);
+            return;
         }
-        else if (value.IsValue)
-        {
-            JsonSerializer.Serialize(writer, value.ObjectValue, options);
-        }
-        else
+
+        if (!value.IsValue)
         {
             writer.WriteNullValue();
+            return;
+        }
+
+        switch (value.ObjectValue)
+        {
+            case bool b:
+                writer.WriteBooleanValue(b);
+                return;
+            case int i:
+                writer.WriteNumberValue(i);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"StringOrValue<{value.ObjectValue?.GetType().Name}> is not supported.");
         }
     }
 }

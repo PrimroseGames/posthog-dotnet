@@ -101,7 +101,9 @@ internal class ExceptionPropertiesBuilder
                 break;
             }
 
+#pragma warning disable IL2026 // StackFrame.GetMethod() may return null in trimmed apps but is best-effort
             var method = frame.GetMethod();
+#pragma warning restore IL2026
             var fileName = frame.GetFileName();
             var lineNumber = frame.GetFileLineNumber();
             var columnNumber = frame.GetFileColumnNumber();

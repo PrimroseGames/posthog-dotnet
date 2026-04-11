@@ -13,8 +13,8 @@ internal class FilterJsonConverter : JsonConverter<Filter>
 
         return type switch
         {
-            "person" or "group" or "cohort" => filterElement.Deserialize<PropertyFilter>(options),
-            "AND" or "OR" => filterElement.Deserialize<FilterSet>(options),
+            "person" or "group" or "cohort" or "flag" => filterElement.Deserialize(PostHogJsonContext.Default.PropertyFilter),
+            "AND" or "OR" => filterElement.Deserialize(PostHogJsonContext.Default.FilterSet),
             _ => throw new InvalidOperationException($"Unexpected filter type: {type}")
         };
     }
@@ -24,10 +24,10 @@ internal class FilterJsonConverter : JsonConverter<Filter>
         switch (value)
         {
             case PropertyFilter propertyFilter:
-                JsonSerializer.Serialize(writer, propertyFilter, options);
+                JsonSerializer.Serialize(writer, propertyFilter, PostHogJsonContext.Default.PropertyFilter);
                 break;
             case FilterSet filterSet:
-                JsonSerializer.Serialize(writer, filterSet, options);
+                JsonSerializer.Serialize(writer, filterSet, PostHogJsonContext.Default.FilterSet);
                 break;
             default:
                 throw new InvalidOperationException($"Unexpected filter type: {NotNull(value).GetType().Name}");

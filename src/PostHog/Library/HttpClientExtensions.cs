@@ -2,44 +2,37 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using PostHog.Api;
 using PostHog.Json;
 
 namespace PostHog.Library;
 
 /// <summary>
-/// Extension methods for <see cref="HttpClient"/>.
+/// Extension methods for <see cref="HttpClient"/>. All JSON helpers take a
+/// <see cref="JsonTypeInfo{T}"/> so the library stays NativeAOT-compatible.
 /// </summary>
 internal static class HttpClientExtensions
 {
     /// <summary>
     /// Sends a POST request to the specified Uri containing the value serialized as JSON in the request body.
-    /// Returns the response body deserialized as <typeparamref name="TBody"/>.
+    /// Returns the response body deserialized as <typeparamref name="TResponse"/>.
     /// </summary>
-    /// <param name="httpClient">The client used to send the request.</param>
-    /// <param name="requestUri">The Uri the request is sent to.</param>
-    /// <param name="content">The value to serialize.</param>
-    /// <param name="cancellationToken">The cancellation token that can be used to cancel the operation.</param>
-    /// <typeparam name="TBody">The type of the response body to deserialize to.</typeparam>
-    /// <returns>The task representing the asynchronous operation.</returns>
-    public static async Task<TBody?> PostJsonAsync<TBody>(
+    public static async Task<TResponse?> PostJsonAsync<TRequest, TResponse>(
         this HttpClient httpClient,
         Uri requestUri,
-        object content,
+        TRequest content,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo,
         CancellationToken cancellationToken)
     {
-        using var response = await httpClient.PostAsJsonAsync(
-            requestUri,
-            content,
-            JsonSerializerHelper.Options,
-            cancellationToken);
+        using var requestContent = JsonContent.Create(content, requestTypeInfo);
+        using var response = await httpClient.PostAsync(requestUri, requestContent, cancellationToken);
 
         await response.EnsureSuccessfulApiCall(cancellationToken);
 
         var result = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await JsonSerializerHelper.DeserializeFromCamelCaseJsonAsync<TBody>(
-            result,
-            cancellationToken: cancellationToken);
+        return await JsonSerializer.DeserializeAsync(result, responseTypeInfo, cancellationToken);
     }
 
     /// <summary>
@@ -47,10 +40,12 @@ internal static class HttpClientExtensions
     /// Retries on 5xx, 408 (Request Timeout), and 429 (Too Many Requests) status codes.
     /// Optionally compresses the request body with gzip.
     /// </summary>
-    public static async Task<TBody?> PostJsonWithRetryAsync<TBody>(
+    public static async Task<TResponse?> PostJsonWithRetryAsync<TRequest, TResponse>(
         this HttpClient httpClient,
         Uri requestUri,
-        object content,
+        TRequest content,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo,
         TimeProvider timeProvider,
         PostHogOptions options,
         CancellationToken cancellationToken)
@@ -69,12 +64,8 @@ internal static class HttpClientExtensions
             try
             {
                 response = enableCompression
-                    ? await PostCompressedJsonAsync(httpClient, requestUri, content, cancellationToken)
-                    : await httpClient.PostAsJsonAsync(
-                        requestUri,
-                        content,
-                        JsonSerializerHelper.Options,
-                        cancellationToken);
+                    ? await PostCompressedJsonAsync(httpClient, requestUri, content, requestTypeInfo, cancellationToken)
+                    : await PostPlainJsonAsync(httpClient, requestUri, content, requestTypeInfo, cancellationToken);
             }
             catch (HttpRequestException) when (attempt <= maxRetries)
             {
@@ -99,9 +90,7 @@ internal static class HttpClientExtensions
                 if (response.IsSuccessStatusCode)
                 {
                     var result = await response.Content.ReadAsStreamAsync(cancellationToken);
-                    return await JsonSerializerHelper.DeserializeFromCamelCaseJsonAsync<TBody>(
-                        result,
-                        cancellationToken: cancellationToken);
+                    return await JsonSerializer.DeserializeAsync(result, responseTypeInfo, cancellationToken);
                 }
 
                 if (!ShouldRetry(response.StatusCode) || attempt > maxRetries)
@@ -116,6 +105,17 @@ internal static class HttpClientExtensions
 
             currentDelay = DoubleWithCap(currentDelay, maxDelay);
         }
+    }
+
+    static async Task<HttpResponseMessage> PostPlainJsonAsync<TRequest>(
+        HttpClient httpClient,
+        Uri requestUri,
+        TRequest content,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        CancellationToken cancellationToken)
+    {
+        using var requestContent = JsonContent.Create(content, requestTypeInfo);
+        return await httpClient.PostAsync(requestUri, requestContent, cancellationToken);
     }
 
     /// <summary>
@@ -242,15 +242,9 @@ internal static class HttpClientExtensions
     {
         try
         {
-            // CA2016: The ReadFromJsonAsync overload that accepts both JsonSerializerOptions and
-            // CancellationToken is only available on .NET 5+. On netstandard2.0/netstandard2.1,
-            // only the overload with cancellationToken (no options) is available. The cancellation
-            // token is still passed and will be respected. This suppression can be removed when
-            // these older targets are dropped from the SDK.
-#pragma warning disable CA2016
-            var result = await response.Content.ReadFromJsonAsync<ApiErrorResult>(
-                cancellationToken: cancellationToken);
-#pragma warning restore CA2016
+            var result = await response.Content.ReadFromJsonAsync(
+                PostHogJsonContext.Default.ApiErrorResult,
+                cancellationToken);
             return (result, null);
         }
         catch (JsonException e)
@@ -261,24 +255,21 @@ internal static class HttpClientExtensions
 
     static Task Delay(TimeProvider timeProvider, TimeSpan delay, CancellationToken cancellationToken)
     {
-#if NET8_0_OR_GREATER
         return Task.Delay(delay, timeProvider, cancellationToken);
-#else
-        return Task.Delay(delay, cancellationToken);
-#endif
     }
 
-    static async Task<HttpResponseMessage> PostCompressedJsonAsync(
+    static async Task<HttpResponseMessage> PostCompressedJsonAsync<TRequest>(
         HttpClient httpClient,
         Uri requestUri,
-        object content,
+        TRequest content,
+        JsonTypeInfo<TRequest> requestTypeInfo,
         CancellationToken cancellationToken)
     {
         // Stream JSON directly into gzip to avoid intermediate allocation
         using var memoryStream = new MemoryStream(4096);
         using (var gzipStream = new GZipStream(memoryStream, CompressionLevel.Fastest, leaveOpen: true))
         {
-            await JsonSerializer.SerializeAsync(gzipStream, content, JsonSerializerHelper.Options, cancellationToken);
+            await JsonSerializer.SerializeAsync(gzipStream, content, requestTypeInfo, cancellationToken);
         }
 
         // Use TryGetBuffer to avoid ToArray() copy when possible

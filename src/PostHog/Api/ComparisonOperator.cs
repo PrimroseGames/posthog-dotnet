@@ -1,12 +1,11 @@
 using System.Text.Json.Serialization;
-using PostHog.Json;
 
 namespace PostHog.Api;
 
 /// <summary>
 /// An enumeration representing the comparison types that can be used in a filter.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumMemberNameJsonConverter<ComparisonOperator>))]
+[JsonConverter(typeof(JsonStringEnumConverter<ComparisonOperator>))]
 public enum ComparisonOperator
 {
     /// <summary>

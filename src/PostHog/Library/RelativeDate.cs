@@ -85,13 +85,3 @@ internal partial record RelativeDate
     [GeneratedRegex(pattern: RelativeDatePattern, options: RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex MyRegex();
 }
-
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-internal partial record RelativeDate
-{
-    private static partial Regex MyRegex()
-    {
-        return new Regex(RelativeDatePattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    }
-}
-#endif
