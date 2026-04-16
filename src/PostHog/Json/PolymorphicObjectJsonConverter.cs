@@ -116,7 +116,7 @@ internal sealed class PolymorphicObjectJsonConverter : JsonConverter<object>
                 }
                 return;
             case CapturedEvent captured:
-                JsonSerializer.Serialize(writer, captured, PostHogJsonContext.Default.CapturedEvent);
+                JsonSerializer.Serialize(writer, captured, JsonSerializerHelper.GetTypeInfo<CapturedEvent>());
                 return;
         }
 
